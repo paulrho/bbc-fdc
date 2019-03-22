@@ -1,7 +1,7 @@
 # bbcfdc
 bbcfdc - Floppy disk raw flux capture and processor
 
-bbcfdc is intended for capturing raw **.rfi** flux data from floppy disk and optionally converting it into a **.ssd**, **.dsd**, **.fsd** or a generic **.img** file.
+bbcfdc is intended for capturing raw **.rfi** flux data from floppy disk and optionally converting it into a **.ssd**, **.dsd**, **.fsd**, **.td0** or a generic **.img** file.
 
 It is designed to work with floppy disk interface PCB attached to GPIO of Raspberry Pi 2 or Raspberry Pi 3 running at 400Mhz (not overclocked). With some modifications the PCB and sample code can be made to work with the Raspberry Pi 1 running at 250Mhz.
 
@@ -11,13 +11,13 @@ Also output to **.dfi** (DiscFerret flux dump) is possible (not tested).
 
 ## Syntax :
 
-`[-i input_rfi_file] [[-c] | [-o output_file]] [-spidiv spi_divider] [[-ss]|[-ds]] [-r retries] [-sort] [-summary] [-tmax maxtracks] [-v]`
+`[-i input_rfi_file] [[-c] | [-o output_file]] [-spidiv spi_divider] [[-ss]|[-ds]] [-r retries] [-sort] [-summary] [-tmax maxtracks] [-title "Title"] [-v]`
 
 ## Where :
 
  * `-i` Specify input **.rfi** file (when not being run on RPi hardware)
  * `-c` Catalogue the disk contents (DFS/ADFS/DOS only)
- * `-o` Specify output file, with one of the following extensions (.rfi, .dfi, .ssd, .dsd, .fsd, .img)
+ * `-o` Specify output file, with one of the following extensions (.rfi, .dfi, .ssd, .dsd, .fsd, .td0, .img)
  * `-spidiv` Specify SPI clock divider to adjust sample rate (one of 16,32,64)
  * `-r` Specify number of retries per track when less than expected sectors are found (not in .rfi or .raw)
  * `-ss` Force single-sided capture
@@ -25,6 +25,7 @@ Also output to **.dfi** (DiscFerret flux dump) is possible (not tested).
  * `-sort` Sort sectors in diskstore prior to writing image
  * `-summary` Present a summary of operations once complete
  * `-tmax` Specify the maximum track number you wish to try stepping to
+ * `-title` Override the title used in metadata for disk formats which support it (.td0 / .fsd)
  * `-v` Verbose
 
 ## Return codes :
@@ -96,4 +97,16 @@ It will check for the .td0 magic identifier, show the header details, decompress
 
 `[input_td0_file]`
 
+## Return codes :
 
+ * `0` - Success
+ * `1` - Error with command line arguments
+ * `2` - Error opening td0 file
+ * `3` - Unable to read header
+ * `4` - Not a valid td0 file
+ * `5` - Unable to read comment, or comment CRC mismatch
+ * `6` - Unable to read track header, or track CRC mismatch
+ * `7` - Unable to read sector header
+ * `8` - Unable to read sector data
+ * `9` - Unable to allocate memory for decompression
+ * `10` - Sector data CRC mismatch

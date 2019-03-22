@@ -12,10 +12,12 @@
 #include "dfs.h"
 #include "dos.h"
 #include "fsd.h"
+#include "teledisk.h"
 #include "rfi.h"
 #include "mod.h"
 #include "fm.h"
 #include "mfm.h"
+#include "gcr.h"
 
 // For type of capture
 #define DISKNONE 0
@@ -31,6 +33,7 @@
 #define IMAGEFSD 4
 #define IMAGEDFI 5
 #define IMAGEIMG 6
+#define IMAGETD0 7
 
 // Used for values which can be overriden
 #define AUTODETECT -1
@@ -121,7 +124,7 @@ void showargs(const char *exename)
 #ifdef NOPI
   fprintf(stderr, "[-i input_rfi_file] ");
 #endif
-  fprintf(stderr, "[[-c] | [-o output_file]] [-spidiv spi_divider] [[-ss]|[-ds]] [-r retries] [-sort] [-summary] [-tmax maxtracks] [-v]\n");
+  fprintf(stderr, "[[-c] | [-o output_file]] [-spidiv spi_divider] [[-ss]|[-ds]] [-r retries] [-sort] [-summary] [-tmax maxtracks]  [-title \"Title\"]  [-v]\n");
 }
 
 int main(int argc,char **argv)
@@ -135,6 +138,7 @@ int main(int argc,char **argv)
 #ifdef NOPI
   char *samplefile;
 #endif
+  char title[100];
 
   // Check we have some arguments
   if (argc==1)
@@ -149,6 +153,7 @@ int main(int argc,char **argv)
 #ifdef NOPI
   samplefile=NULL;
 #endif
+  title[0]=0;
 
   // Process command line arguments
   while (argn<argc)
@@ -214,6 +219,18 @@ int main(int argc,char **argv)
       {
         hw_setmaxtracks(retval);
         printf("Override maximum number of drive tracks to %d\n", retval);
+      }
+    }
+    else
+    if ((strcmp(argv[argn], "-title")==0) && ((argn+1)<argc))
+    {
+      ++argn;
+
+      // Override the disk title for certain disk image formats
+      if (strlen(argv[argn])<(sizeof(title)-1))
+      {
+        strcpy(title, argv[argn]);
+        printf("Override disk title to \"%s\"\n", title);
       }
     }
     else
@@ -294,7 +311,19 @@ int main(int argc,char **argv)
           outputtype=IMAGEIMG;
         }
         else
-          printf("Unable to save fsd image\n");
+          printf("Unable to save img image\n");
+      }
+      else
+      if (strstr(argv[argn], ".td0")!=NULL)
+      {
+        diskimage=fopen(argv[argn], "w+");
+        if (diskimage!=NULL)
+        {
+          capturetype=DISKIMG;
+          outputtype=IMAGETD0;
+        }
+        else
+          printf("Unable to save td0 image\n");
       }
       else
       if (strstr(argv[argn], ".rfi")!=NULL)
@@ -452,6 +481,9 @@ int main(int argc,char **argv)
   else
     modulation=MODMFM;
 
+  if ((gcr_lasttrack==-1) && (gcr_lastsector==-1))
+    printf("No GCR sector IDs found\n");
+
   if (modulation!=AUTODETECT)
   {
     int othertrack;
@@ -586,9 +618,6 @@ int main(int argc,char **argv)
     // Process all available disk sides (heads)
     for (side=0; side<sides; side++)
     {
-      // Request a directory listing for this side of the disk
-      if (i==0) info=0;
-
       // Select the correct side
       hw_sideselect(side);
 
@@ -653,7 +682,7 @@ int main(int argc,char **argv)
       if (capturetype!=DISKRAW)
       {
         // Check if catalogue has been done
-        if ((info==0) && (catalogue==1))
+        if ((info<sides) && (catalogue==1))
         {
           if (dfs_validcatalogue(hw_currenthead))
           {
@@ -777,25 +806,63 @@ int main(int argc,char **argv)
   // Write the data to disk image file (if required)
   if (diskimage!=NULL)
   {
+    if (outputtype==IMAGETD0)
+    {
+      // When no title set, try to use title from source disk
+      if (title[0]==0)
+      {
+        // If they were found and they appear to be DFS catalogue then extract title
+        if (dfs_validcatalogue(0))
+        {
+          dfs_gettitle(0, title, sizeof(title));
+        }
+        else
+        if (dos_validate()!=DOS_UNKNOWN)
+        {
+          dos_gettitle(title, sizeof(title));
+        }
+        else
+        {
+          int adfs_format;
+
+          adfs_format=adfs_validate();
+
+          if (adfs_format!=ADFS_UNKNOWN)
+            adfs_gettitle(adfs_format, title, sizeof(title));
+        }
+      }
+
+      // If no title or blank title, then use default
+      if (title[0]==0)
+        strcpy(title, "NO TITLE");
+
+      td0_write(diskimage, disktracks, title);
+    }
+    else
     if (outputtype==IMAGEFSD)
     {
-      char title[100];
-
-      title[0]=0;
-
-      // If they were found and they appear to be DFS catalogue then extract title
-      if (dfs_validcatalogue(0))
+      // When no title set, try to use title from source disk
+      if (title[0]==0)
       {
-        dfs_gettitle(0, title, sizeof(title));
-      }
-      else
-      {
-        int adfs_format;
+        // If they were found and they appear to be DFS catalogue then extract title
+        if (dfs_validcatalogue(0))
+        {
+          dfs_gettitle(0, title, sizeof(title));
+        }
+        else
+        if (dos_validate()!=DOS_UNKNOWN)
+        {
+          dos_gettitle(title, sizeof(title));
+        }
+        else
+        {
+          int adfs_format;
 
-        adfs_format=adfs_validate();
+          adfs_format=adfs_validate();
 
-        if (adfs_format!=ADFS_UNKNOWN)
-          adfs_gettitle(adfs_format, title, sizeof(title));
+          if (adfs_format!=ADFS_UNKNOWN)
+            adfs_gettitle(adfs_format, title, sizeof(title));
+        }
       }
 
       // If no title or blank title, then use default
@@ -904,6 +971,7 @@ int main(int argc,char **argv)
   {
     unsigned int fmsectors=diskstore_countsectormod(MODFM);
     unsigned int mfmsectors=diskstore_countsectormod(MODMFM);
+    unsigned int gcrsectors=diskstore_countsectormod(MODGCR);
 
     diskstore_dumpsectorlist();
 
@@ -921,6 +989,7 @@ int main(int argc,char **argv)
 
     printf("FM sectors found %u\n", fmsectors);
     printf("MFM sectors found %u\n", mfmsectors);
+    printf("GCR sectors found %u\n", gcrsectors);
 
     printf("Detected density : ");
     if ((mod_density&MOD_DENSITYFMSD)!=0) printf("SD ");

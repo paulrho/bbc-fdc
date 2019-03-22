@@ -73,7 +73,8 @@ unsigned long dos_clustertoabsolute(const unsigned long clusterid, const unsigne
 void dos_readdir(const int level, const unsigned long offset, const unsigned int entries, const unsigned long sectorspercluster, const unsigned long bytespersector, const unsigned long dataregion, const unsigned long parent, unsigned int disktracks)
 {
   struct dos_direntry de;
-  int i, j;
+  unsigned int i;
+  int j;
   char shortname[8+1+3+1];
   unsigned char shortlen;
 
@@ -84,7 +85,7 @@ void dos_readdir(const int level, const unsigned long offset, const unsigned int
     diskstore_absoluteread((char *)&de, sizeof(de), INTERLEAVED, disktracks);
 
     // Check for end of directory
-    if (de.shortname[0]==0)
+    if (de.shortname[0]==DOS_DIRENTRYEND)
       break;
 
     for (j=0; j<level; j++)
@@ -93,6 +94,10 @@ void dos_readdir(const int level, const unsigned long offset, const unsigned int
     shortlen=0;
     for (j=0; j<8; j++)
       shortname[shortlen++]=de.shortname[j];
+
+    // Check for deleted files, replace first character with '?'
+    if (((unsigned char)shortname[0]==DOS_DIRENTRYDEL) || ((unsigned char)shortname[0]==DOS_DIRENTRYPREDEL))
+      shortname[0]='?';
 
     while ((shortlen>0) && (shortname[shortlen-1]==' '))
       shortlen--;
@@ -441,4 +446,30 @@ int dos_validate()
     return DOS_UNKNOWN;
 
   return dos_fatformat(sector1);
+}
+
+void dos_gettitle(char *title, const int titlelen)
+{
+  Disk_Sector *sector1;
+  struct dos_extendedbiosparams *exbiosparams;
+
+  // Search for sector
+  sector1=diskstore_findhybridsector(0, 0, 1);
+
+  if (sector1==NULL)
+    return;
+
+  if (sector1->data==NULL)
+    return;
+
+  // Check sector is 512 bytes in length
+  if (sector1->datasize!=DOS_SECTORSIZE)
+    return;
+
+  // BIOS parameter block
+  exbiosparams=(struct dos_extendedbiosparams *)&sector1->data[DOS_OFFSETEBPB];
+
+  // Use the volume serial as the title
+  if (titlelen>=10)
+    sprintf(title, "%.4x-%.4x", exbiosparams->volumeserial>>16, exbiosparams->volumeserial&0xffff);
 }
