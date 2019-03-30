@@ -33,15 +33,17 @@
 #define DOS_DIRENTRYDEL 0xe5
 #define DOS_DIRENTRYDOT 0x2e
 #define DOS_DIRENTRYPREDEL 0x05
+#define DOS_MAXLFNLENGTH 255
 
 // DOS file attributes
 #define DOS_ATTRIB_READONLY 0x01
 #define DOS_ATTRIB_HIDDEN 0x02
 #define DOS_ATTRIB_SYSTEM 0x04
-#define DOS_ATTRIB_VOLUMELABEL 0x08
+#define DOS_ATTRIB_VOLUMEID 0x08
 #define DOS_ATTRIB_DIRECTORY 0x10
 #define DOS_ATTRIB_ARCHIVE 0x20
 #define DOS_ATTRIB_DEVICE 0x40
+#define DOS_ATTRIB_LONGNAME (DOS_ATTRIB_READONLY|DOS_ATTRIB_HIDDEN|DOS_ATTRIB_SYSTEM|DOS_ATTRIB_VOLUMEID)
 
 #pragma pack(push,1)
 
@@ -71,13 +73,14 @@ struct dos_biosparams
   uint32_t largesectors; // Number of sectors on volume (if > 65535, else 0)
 };
 
-// FAT12/FAT16 EBPB
+// FAT12/FAT16 EBPB - DOS 4.0 onwards
 struct dos_extendedbiosparams
 {
   uint8_t physicaldiskid; // BIOS physical disk number, floppies start at 0x00, hdd start at 0x80
-  uint8_t currenthead; // Current head (not used by FAT)
+  uint8_t currenthead; // Current head (not used by FAT), CHKDSK flags on Windows NT
   uint8_t signature; // Disk signature, WindowsNT requires this to be 0x28/0x29
   uint32_t volumeserial; // Almost unique serial number created at format, often from month/day combined with seconds/hundreths for high word, and year with hours/minutes for low word
+
   uint8_t volumelabel[11]; // Used to store volume label, this is now a special file in FAT, not available if signature is 0x28
   uint8_t systemid[8]; // System ID, depends on format, not available if signature is 0x28
 };
@@ -123,6 +126,19 @@ struct dos_direntry
   uint16_t modifydate; // Last modified date, range as above
   uint16_t startcluster; // Start of file cluster in FAT12/FAT16
   uint32_t filesize; // File size in bytes, volume label/directories are 0
+};
+
+// VFAT LFN entry
+struct dos_lfnentry
+{
+  uint8_t sequence; // Sequence number
+  uint16_t name1[5]; // UCS-2 characters
+  uint8_t attribs; // Attributes bitfield, always 0xff
+  uint8_t lfntype; // Always 0x00 for VFAT LFN
+  uint8_t checksum; // Checksum of DOS filename
+  uint16_t name2[6]; // UCS-2 characters
+  uint16_t startcluster; // Start of file cluster, always 0x0000
+  uint16_t name3[2]; // UCS-2 characters
 };
 
 #pragma pack(pop)
